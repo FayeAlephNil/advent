@@ -6,7 +6,7 @@
 
 import Prelude hiding (readFile)
 import Parsing (parseExecute)
-import Run (printCommands)
+import CPU (printCommands)
 import System.Environment (getArgs)
 import Data.Text.IO (readFile)
 

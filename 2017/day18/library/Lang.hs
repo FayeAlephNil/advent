@@ -5,7 +5,8 @@ module Lang where
 import Prelude hiding (mod, snd)
 import qualified Prelude
 import Registry
-import CPU
+import Run
+import Control.Monad.Reader
 import Data.List.Zipper
 
 data RegInstruction where
@@ -51,28 +52,30 @@ rcv = ChannelInst . RCV
 jgz :: Value -> Value -> Instruction
 jgz v1 v2= ControlInst $ JGZ v1 v2
 
-binaryInstruction :: (MonadReg m) => (Int -> Int -> Int) -> Register -> Value -> m ()
+binaryInstruction :: (MonadReg m) => (Int -> Int -> Int) -> Register -> Value -> ReaderT ID m ()
 binaryInstruction combine reg val = do
     i <- getValue val
     j <- getValue (Right reg)
     setValue reg (Left $ combine j i)
 
-regExec :: (MonadReg m) => RegInstruction -> m ()
+regExec :: (MonadReg m) => RegInstruction -> ReaderT ID m ()
 regExec (SET reg val) = setValue reg val
 regExec (ADD reg val) = binaryInstruction (+) reg val
 regExec (MUL reg val) = binaryInstruction (*) reg val
 regExec (MOD reg val) = binaryInstruction (Prelude.mod) reg val
 
-regProgram :: (MonadReg m) => [RegInstruction] -> m ()
+regProgram :: (MonadReg m) => [RegInstruction] -> ReaderT ID m ()
 regProgram = sequence_ . fmap regExec
 
-channelExec :: (MonadCPU m) => ChannelInstruction -> m ()
-channelExec (SND val) = send val
-channelExec (RCV val) = do
-    i <- getValue val
-    if i == 0 then pure () else callRcv
+channelExec :: (MonadRun m) => ChannelInstruction -> ReaderT ID m ()
+channelExec (SND val) = do
+    i <- ask
+    if i == 0 then send 1 val else
+        if i == 1 then send 0 val
+            else send i val
+channelExec (RCV val) = callRcv val
 
-controlExec :: (MonadReg m) => (ControlInstruction) -> Zipper Instruction -> m (Maybe (Zipper Instruction))
+controlExec :: (MonadReg m) => (ControlInstruction) -> Zipper Instruction -> ReaderT ID m (Maybe (Zipper Instruction))
 controlExec (JGZ xval yval) zipper = do 
     x <- getValue xval
     y <- getValue yval
@@ -90,24 +93,26 @@ controlExec (JGZ xval yval) zipper = do
 
         zipperFor n zipp = if n < 0 then leftFor (-n) zipp else rightFor n zipp
 
-step :: (MonadCPU m) => Bool -> Zipper Instruction -> m (Maybe (Zipper Instruction))
+printing :: (MonadRun m) => Bool -> ReaderT ID m ()
+printing weDo = if weDo then printState else pure ()
+
+step :: (MonadRun m) => Bool -> Zipper Instruction -> ReaderT ID m (Maybe (Zipper Instruction))
 step _ (Zip [] []) = pure Nothing
 step _ (Zip _ []) = pure Nothing
 step printSteps (Zip ls (ChannelInst ci : rs)) = do
     channelExec ci
-    if printSteps then printCPU else pure ()
+    printing printSteps
     pure (Just $ Zip (ChannelInst ci : ls) rs)
 step printSteps (Zip ls (RegInst p : rs)) = do
-    regExec p 
-    if printSteps then printCPU else pure ()
+    regExec p
+    printing printSteps
     pure (Just $ Zip (RegInst p : ls) rs)
 step printSteps zipper@(Zip _ (ControlInst ci : _)) = do 
     zipper' <- controlExec ci zipper
-    if printSteps then printCPU else pure ()
+    printing printSteps
     pure zipper'
 
-
-program :: (MonadCPU m) => Bool -> [Instruction] -> m ()
+program :: (MonadRun m) => Bool -> [Instruction] -> ReaderT ID m ()
 program printSteps is = programZipped (fromList is)
     where
         programZipped zipper = do
@@ -115,6 +120,12 @@ program printSteps is = programZipped (fromList is)
             case cont of
                 Nothing -> pure ()
                 (Just zipper') -> programZipped zipper'
+
+program' :: (MonadRun m) => Bool -> [Instruction] -> m ()
+program' printSteps is = runReaderT (program printSteps is) 0
+
+programAll :: (MonadRun m) => Bool -> [Instruction] -> m ()
+programAll = undefined
 
 sampleProgram :: [Instruction]
 sampleProgram = [
