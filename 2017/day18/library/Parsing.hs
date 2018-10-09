@@ -3,19 +3,22 @@
 module Parsing where
 
 import Prelude hiding (mod, snd, lines)
+
 import Data.Attoparsec.Text
 import Data.Text hiding (length, zip, filter, toUpper)
 import Data.Char
 import Data.Either (rights)
+
 import Control.Applicative
-import Control.Monad.State
+
 import Lang
+import CPU
 import Registry
 
-parseExecute :: (MonadState (Int, Registry, [Int]) m) => Text -> Either String (m ())
-parseExecute t = case parseFull t of
+parseExecute :: (MonadCPU m) => Bool -> Text -> Either String (m ())
+parseExecute printSteps t = case parseFull t of
     (Left s) -> Left s
-    (Right is) -> Right $ program is
+    (Right is) -> Right $ program printSteps is
 
 parseFull :: Text -> Either String [Instruction]
 parseFull t = case (filter condition $ zip theParse [(1 :: Int)..]) of
@@ -32,13 +35,13 @@ parseFull' :: Text -> [Either String Instruction]
 parseFull' t = fmap (parseOnly lineParser) $ lines t
 
 lineParser :: Parser Instruction
-lineParser = try sndParser
-         <|> try setParser
-         <|> try addParser
-         <|> try mulParser
-         <|> try modParser
-         <|> try rcvParser
-         <|> try jgzParser
+lineParser = sndParser
+         <|> setParser
+         <|> addParser
+         <|> mulParser
+         <|> modParser
+         <|> rcvParser
+         <|> jgzParser
          <|> (skipSpace >> pure (rcv (Left 0)))
 
 digits :: [Int] -> Int

@@ -5,7 +5,7 @@ module Lang where
 import Prelude hiding (mod, snd)
 import qualified Prelude
 import Registry
-import Control.Monad.State
+import CPU
 import Data.List.Zipper
 
 data PureInstruction where
@@ -47,13 +47,13 @@ rcv = PureInst . RCV
 jgz :: Value -> Value -> Instruction
 jgz v1 v2= ControlInst $ JGZ v1 v2
 
-binaryInstruction :: (MonadState (a, Registry, c) m) => (Int -> Int -> Int) -> Register -> Value -> m ()
+binaryInstruction :: (MonadCPU m) => (Int -> Int -> Int) -> Register -> Value -> m ()
 binaryInstruction combine reg val = do
     i <- getValue val
     j <- getValue (Right reg)
     setValue reg (Left $ combine j i)
 
-pureExec :: (MonadState (Int, Registry, [Int]) m) => PureInstruction -> m ()
+pureExec :: (MonadCPU m) => PureInstruction -> m ()
 pureExec (SND val) = playSound val
 pureExec (SET reg val) = setValue reg val
 pureExec (ADD reg val) = binaryInstruction (+) reg val
@@ -61,18 +61,22 @@ pureExec (MUL reg val) = binaryInstruction (*) reg val
 pureExec (MOD reg val) = binaryInstruction (Prelude.mod) reg val
 pureExec (RCV val) = do
     i <- getValue val
-    if i == 0 then pure () else rcvSound
+    if i == 0 then pure () else callRcv
 
-pureProgram :: (MonadState (Int, Registry, [Int]) m) => [PureInstruction] -> m ()
+pureProgram :: (MonadCPU m) => [PureInstruction] -> m ()
 pureProgram = sequence_ . fmap pureExec
 
-step :: (MonadState (Int, Registry, [Int]) m) => Zipper Instruction -> m (Maybe (Zipper Instruction))
-step (Zip [] []) = pure Nothing
-step (Zip _ []) = pure Nothing
-step (Zip ls (PureInst p : rs)) = pureExec p >> pure (Just $ Zip (PureInst p : ls) rs)
-step zipper@(Zip _ (ControlInst (JGZ xval yval) : _)) = do 
+step :: (MonadCPU m) => Bool -> Zipper Instruction -> m (Maybe (Zipper Instruction))
+step _ (Zip [] []) = pure Nothing
+step _ (Zip _ []) = pure Nothing
+step printSteps (Zip ls (PureInst p : rs)) = do
+    pureExec p 
+    if printSteps then printCPU else pure ()
+    pure (Just $ Zip (PureInst p : ls) rs)
+step printSteps zipper@(Zip _ (ControlInst (JGZ xval yval) : _)) = do 
     x <- getValue xval
     y <- getValue yval
+    if printSteps then printCPU else pure ()
     if (x <= 0 || y == 0) then pure (Just $ right zipper) else do
         pure (Just $ (zipperFor (y) zipper))
     where
@@ -87,11 +91,11 @@ step zipper@(Zip _ (ControlInst (JGZ xval yval) : _)) = do
 
         zipperFor n zipp = if n < 0 then leftFor (-n) zipp else rightFor n zipp
 
-program :: (MonadState (Int, Registry, [Int]) m) => [Instruction] -> m ()
-program is = programZipped (fromList is)
+program :: (MonadCPU m) => Bool -> [Instruction] -> m ()
+program printSteps is = programZipped (fromList is)
     where
         programZipped zipper = do
-            cont <- step zipper
+            cont <- step printSteps zipper
             case cont of
                 Nothing -> pure ()
                 (Just zipper') -> programZipped zipper'

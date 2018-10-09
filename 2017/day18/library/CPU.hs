@@ -1,5 +1,3 @@
-{-# LANGUAGE TupleSections #-}
-
 module CPU where
 
 import Data.IORef
@@ -24,24 +22,71 @@ initCPU = do
         cpuRcv = rcvRef
     }
 
-printCPU :: CPU -> IO ()
-printCPU (CPU soundRef regRef rcvRef) = do
-    sound <- readIORef soundRef
-    reg <- readIORef regRef
-    rcv <- readIORef rcvRef
-    print (sound, reg, rcv)
+class (Monad m) => MonadCPU m where
+    putSound :: Int -> m ()
+    getSound :: m Int
 
-runCommands :: ReaderT CPU IO a -> IO (a, CPU)
-runCommands r = do
-    cpu <- initCPU
-    fmap (,cpu) $ runReaderT r cpu 
+    callRcv :: m ()
+    getRcv :: m [Int]
 
-printCommands :: (Show a) => ReaderT CPU IO a -> IO (a, CPU)
-printCommands r = do
-    (a, cpu) <- runCommands r
-    print a
-    printCPU cpu
-    pure (a, cpu)
+    setReg :: Register -> Int -> m ()
+    getReg :: Register -> m Int
+
+    printCPU :: m ()
+
+instance MonadCPU (ReaderT CPU IO) where
+    putSound i = do
+        cpu <- ask
+        let soundRef = cpuSound cpu
+        lift $ writeIORef soundRef i
+    
+    getSound = do
+        cpu <- ask
+        lift . readIORef . cpuSound $ cpu
+
+    callRcv = do
+        cpu <- ask
+        let (soundRef, rcvRef) = (cpuSound cpu, cpuRcv cpu)
+        s <- lift . readIORef $ soundRef
+        lift $ modifyIORef rcvRef (s:)
+
+    getRcv = do
+        cpu <- ask
+        let rcvRef = cpuRcv cpu
+        lift $ readIORef rcvRef
+
+    setReg r i = do
+        cpu <- ask
+        lift $ modifyIORef (cpuRegistry cpu) (setRegister r i)
+
+    getReg r = do
+        cpu <- ask
+        registry <- lift . readIORef . cpuRegistry $ cpu
+        pure (getRegister r registry)
+
+    printCPU = do
+        cpu <- ask
+        let (soundRef, regRef, rcvRef) = (cpuSound cpu, cpuRegistry cpu, cpuRcv cpu)
+        
+        sound <- lift . readIORef $ soundRef
+        reg <- lift . readIORef $ regRef
+        rcv <- lift . readIORef $ rcvRef
+
+        lift . putStrLn $ "CPU State: " ++ show (sound, reg, rcv)
+
+getValue :: (MonadCPU m) => Value -> m Int
+getValue (Left i) = pure i
+getValue (Right r) = getReg r
+
+setValue :: (MonadCPU m) => Register -> Value -> m ()
+setValue r val = do
+    i <- getValue val
+    setReg r i
+
+playSound :: (MonadCPU m) => Value -> m ()
+playSound val = do
+    i <- getValue val
+    putSound i
 
 instance {-# OVERLAPPING #-} MonadState (Int, Registry, [Int]) (ReaderT CPU IO) where
     state f = do
