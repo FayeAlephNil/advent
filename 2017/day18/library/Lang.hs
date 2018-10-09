@@ -8,13 +8,16 @@ import Registry
 import CPU
 import Data.List.Zipper
 
-data PureInstruction where
-    SND :: Value -> PureInstruction
-    SET :: Register -> Value -> PureInstruction
-    ADD :: Register -> Value -> PureInstruction
-    MUL :: Register -> Value -> PureInstruction
-    MOD :: Register -> Value -> PureInstruction
-    RCV :: Value -> PureInstruction
+data RegInstruction where
+    SET :: Register -> Value -> RegInstruction
+    ADD :: Register -> Value -> RegInstruction
+    MUL :: Register -> Value -> RegInstruction
+    MOD :: Register -> Value -> RegInstruction
+    deriving (Show)
+
+data ChannelInstruction where
+    SND :: Value -> ChannelInstruction
+    RCV :: Value -> ChannelInstruction
     deriving (Show)
 
 data ControlInstruction where
@@ -22,63 +25,59 @@ data ControlInstruction where
     deriving (Show)
 
 data Instruction where
-    PureInst :: PureInstruction -> Instruction
+    RegInst :: RegInstruction -> Instruction
+    ChannelInst :: ChannelInstruction -> Instruction
     ControlInst :: ControlInstruction -> Instruction
     deriving (Show)
 
 snd :: Value -> Instruction
-snd = PureInst . SND
+snd = ChannelInst . SND
 
 set :: Register -> Value -> Instruction
-set r v = PureInst $ SET r v
+set r v = RegInst $ SET r v
 
 add :: Register -> Value -> Instruction
-add r v = PureInst $ ADD r v
+add r v = RegInst $ ADD r v
 
 mul :: Register -> Value -> Instruction
-mul r v = PureInst $ MUL r v
+mul r v = RegInst $ MUL r v
 
 mod :: Register -> Value -> Instruction
-mod r v = PureInst $ MOD r v
+mod r v = RegInst $ MOD r v
 
 rcv :: Value -> Instruction
-rcv = PureInst . RCV
+rcv = ChannelInst . RCV
 
 jgz :: Value -> Value -> Instruction
 jgz v1 v2= ControlInst $ JGZ v1 v2
 
-binaryInstruction :: (MonadCPU m) => (Int -> Int -> Int) -> Register -> Value -> m ()
+binaryInstruction :: (MonadReg m) => (Int -> Int -> Int) -> Register -> Value -> m ()
 binaryInstruction combine reg val = do
     i <- getValue val
     j <- getValue (Right reg)
     setValue reg (Left $ combine j i)
 
-pureExec :: (MonadCPU m) => PureInstruction -> m ()
-pureExec (SND val) = playSound val
-pureExec (SET reg val) = setValue reg val
-pureExec (ADD reg val) = binaryInstruction (+) reg val
-pureExec (MUL reg val) = binaryInstruction (*) reg val
-pureExec (MOD reg val) = binaryInstruction (Prelude.mod) reg val
-pureExec (RCV val) = do
+regExec :: (MonadReg m) => RegInstruction -> m ()
+regExec (SET reg val) = setValue reg val
+regExec (ADD reg val) = binaryInstruction (+) reg val
+regExec (MUL reg val) = binaryInstruction (*) reg val
+regExec (MOD reg val) = binaryInstruction (Prelude.mod) reg val
+
+regProgram :: (MonadReg m) => [RegInstruction] -> m ()
+regProgram = sequence_ . fmap regExec
+
+channelExec :: (MonadCPU m) => ChannelInstruction -> m ()
+channelExec (SND val) = send val
+channelExec (RCV val) = do
     i <- getValue val
     if i == 0 then pure () else callRcv
 
-pureProgram :: (MonadCPU m) => [PureInstruction] -> m ()
-pureProgram = sequence_ . fmap pureExec
-
-step :: (MonadCPU m) => Bool -> Zipper Instruction -> m (Maybe (Zipper Instruction))
-step _ (Zip [] []) = pure Nothing
-step _ (Zip _ []) = pure Nothing
-step printSteps (Zip ls (PureInst p : rs)) = do
-    pureExec p 
-    if printSteps then printCPU else pure ()
-    pure (Just $ Zip (PureInst p : ls) rs)
-step printSteps zipper@(Zip _ (ControlInst (JGZ xval yval) : _)) = do 
+controlExec :: (MonadReg m) => (ControlInstruction) -> Zipper Instruction -> m (Maybe (Zipper Instruction))
+controlExec (JGZ xval yval) zipper = do 
     x <- getValue xval
     y <- getValue yval
-    if printSteps then printCPU else pure ()
     if (x <= 0 || y == 0) then pure (Just $ right zipper) else do
-        pure (Just $ (zipperFor (y) zipper))
+        pure (Just $ (zipperFor y zipper))
     where
         leftFor _ (Zip [] _) = Zip [] []
         leftFor 0 zipp = zipp
@@ -90,6 +89,23 @@ step printSteps zipper@(Zip _ (ControlInst (JGZ xval yval) : _)) = do
         rightFor n zipp = right $ rightFor (n - 1) zipp
 
         zipperFor n zipp = if n < 0 then leftFor (-n) zipp else rightFor n zipp
+
+step :: (MonadCPU m) => Bool -> Zipper Instruction -> m (Maybe (Zipper Instruction))
+step _ (Zip [] []) = pure Nothing
+step _ (Zip _ []) = pure Nothing
+step printSteps (Zip ls (ChannelInst ci : rs)) = do
+    channelExec ci
+    if printSteps then printCPU else pure ()
+    pure (Just $ Zip (ChannelInst ci : ls) rs)
+step printSteps (Zip ls (RegInst p : rs)) = do
+    regExec p 
+    if printSteps then printCPU else pure ()
+    pure (Just $ Zip (RegInst p : ls) rs)
+step printSteps zipper@(Zip _ (ControlInst ci : _)) = do 
+    zipper' <- controlExec ci zipper
+    if printSteps then printCPU else pure ()
+    pure zipper'
+
 
 program :: (MonadCPU m) => Bool -> [Instruction] -> m ()
 program printSteps is = programZipped (fromList is)

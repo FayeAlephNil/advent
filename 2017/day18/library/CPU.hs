@@ -22,28 +22,27 @@ initCPU = do
         cpuRcv = rcvRef
     }
 
-class (Monad m) => MonadCPU m where
-    putSound :: Int -> m ()
-    getSound :: m Int
+class (Monad m) => MonadSend m where
+    sendInt :: Int -> m ()
 
+class (Monad m) => MonadRcv m where
     callRcv :: m ()
     getRcv :: m [Int]
 
+class (Monad m) => MonadReg m where
     setReg :: Register -> Int -> m ()
     getReg :: Register -> m Int
 
+class (MonadSend m, MonadRcv m, MonadReg m) => MonadCPU m where
     printCPU :: m ()
 
-instance MonadCPU (ReaderT CPU IO) where
-    putSound i = do
+instance MonadSend (ReaderT CPU IO) where
+    sendInt i = do
         cpu <- ask
         let soundRef = cpuSound cpu
         lift $ writeIORef soundRef i
-    
-    getSound = do
-        cpu <- ask
-        lift . readIORef . cpuSound $ cpu
 
+instance MonadRcv (ReaderT CPU IO) where 
     callRcv = do
         cpu <- ask
         let (soundRef, rcvRef) = (cpuSound cpu, cpuRcv cpu)
@@ -55,6 +54,7 @@ instance MonadCPU (ReaderT CPU IO) where
         let rcvRef = cpuRcv cpu
         lift $ readIORef rcvRef
 
+instance MonadReg (ReaderT CPU IO) where
     setReg r i = do
         cpu <- ask
         lift $ modifyIORef (cpuRegistry cpu) (setRegister r i)
@@ -64,6 +64,8 @@ instance MonadCPU (ReaderT CPU IO) where
         registry <- lift . readIORef . cpuRegistry $ cpu
         pure (getRegister r registry)
 
+
+instance MonadCPU (ReaderT CPU IO) where    
     printCPU = do
         cpu <- ask
         let (soundRef, regRef, rcvRef) = (cpuSound cpu, cpuRegistry cpu, cpuRcv cpu)
@@ -74,19 +76,19 @@ instance MonadCPU (ReaderT CPU IO) where
 
         lift . putStrLn $ "CPU State: " ++ show (sound, reg, rcv)
 
-getValue :: (MonadCPU m) => Value -> m Int
+getValue :: (MonadReg m) => Value -> m Int
 getValue (Left i) = pure i
 getValue (Right r) = getReg r
 
-setValue :: (MonadCPU m) => Register -> Value -> m ()
+setValue :: (MonadReg m) => Register -> Value -> m ()
 setValue r val = do
     i <- getValue val
     setReg r i
 
-playSound :: (MonadCPU m) => Value -> m ()
-playSound val = do
+send :: (MonadReg m, MonadSend m) => Value -> m ()
+send val = do
     i <- getValue val
-    putSound i
+    sendInt i
 
 instance {-# OVERLAPPING #-} MonadState (Int, Registry, [Int]) (ReaderT CPU IO) where
     state f = do

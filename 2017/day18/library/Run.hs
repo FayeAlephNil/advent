@@ -3,9 +3,6 @@
 module Run where
 
 import CPU
-import Data.IORef
-import Registry
-import Control.Monad.State
 import Control.Monad.Reader
 
 runCommands :: ReaderT CPU IO a -> IO (a, CPU)
