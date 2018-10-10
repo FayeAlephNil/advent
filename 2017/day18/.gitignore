@@ -3,4 +3,3 @@
 # Stack generates the Cabal file from `package.yaml` through hpack.
 /*.cabal
 /output
-output.txt
