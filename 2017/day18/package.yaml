@@ -28,6 +28,7 @@ library:
   - mtl
   - ListZipper
   - text
+  - async
   source-dirs: library
   default-extensions: 
     - FlexibleContexts
@@ -43,6 +44,7 @@ executables:
     - base
     - day18
     - text
+
     ghc-options:
     - -rtsopts
     - -threaded

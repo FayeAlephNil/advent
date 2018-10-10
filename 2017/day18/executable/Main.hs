@@ -5,17 +5,20 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
 import Prelude hiding (readFile)
-import Parsing (parseExecute)
-import CPU (printCommands)
-import System.Environment (getArgs)
 import Data.Text.IO (readFile)
+import Exec
+import System.Environment (getArgs)
+
 
 executeFile :: Bool -> String -> IO ()
 executeFile printSteps path = do
     text <- readFile path
-    case parseExecute printSteps text of
-        (Left l) -> putStrLn l
-        (Right m) -> printCommands m >> pure ()
+    execute printSteps text
+
+executeFileSide :: Bool -> String -> IO ()
+executeFileSide printSteps path = do
+    text <- readFile path
+    executeSide printSteps text
 
 main :: IO ()
 main = do
@@ -23,5 +26,9 @@ main = do
     case args of
         [] -> putStrLn "Please provide a filename to parse"
         [fileName] -> executeFile False fileName
+        [fileName, "1"] -> executeFile False fileName
+        [fileName, "2"] -> executeFileSide False fileName
         [fileName, b] -> executeFile (read b) fileName
-        _ -> putStrLn "Too many arguments, please provide only a filename or a filename and a boolean for printing each step"
+        [fileName, b, "1"] -> executeFile (read b) fileName
+        [fileName, b, "2"] -> executeFileSide (read b) fileName
+        _ -> putStrLn "Wrong arugments, please provide only a filename, a boolean for printing each step, and an optional number of the challenge after"

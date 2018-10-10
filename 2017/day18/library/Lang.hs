@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, NoImplicitPrelude #-}
+{-# LANGUAGE GADTs, NoImplicitPrelude, ScopedTypeVariables #-}
 
 module Lang where
 
@@ -70,8 +70,8 @@ regProgram = sequence_ . fmap regExec
 channelExec :: (MonadRun m) => ChannelInstruction -> ReaderT ID m ()
 channelExec (SND val) = do
     i <- ask
-    if i == 0 then send 1 val else
-        if i == 1 then send 0 val
+    if i == 1 then send 2 val else
+        if i == 2 then send 1 val
             else send i val
 channelExec (RCV val) = callRcv val
 
@@ -100,16 +100,16 @@ step :: (MonadRun m) => Bool -> Zipper Instruction -> ReaderT ID m (Maybe (Zippe
 step _ (Zip [] []) = pure Nothing
 step _ (Zip _ []) = pure Nothing
 step printSteps (Zip ls (ChannelInst ci : rs)) = do
-    channelExec ci
     printing printSteps
+    channelExec ci
     pure (Just $ Zip (ChannelInst ci : ls) rs)
 step printSteps (Zip ls (RegInst p : rs)) = do
-    regExec p
     printing printSteps
+    regExec p
     pure (Just $ Zip (RegInst p : ls) rs)
 step printSteps zipper@(Zip _ (ControlInst ci : _)) = do 
-    zipper' <- controlExec ci zipper
     printing printSteps
+    zipper' <- controlExec ci zipper
     pure zipper'
 
 program :: (MonadRun m) => Bool -> [Instruction] -> ReaderT ID m ()
@@ -124,8 +124,16 @@ program printSteps is = programZipped (fromList is)
 program' :: (MonadRun m) => Bool -> [Instruction] -> m ()
 program' printSteps is = runReaderT (program printSteps is) 0
 
-programAll :: (MonadRun m) => Bool -> [Instruction] -> m ()
-programAll = undefined
+programAll :: (MonadRun m) => ([m ()] -> a) -> Int -> Bool -> [Instruction] -> a
+programAll runIt maxThreads printSteps is = runIt (programs instructions)
+    where
+        instructions = zip (replicate maxThreads is) [1..]
+
+        programs :: (MonadRun m) => [([Instruction], ID)] -> [m ()]
+        programs insts = fmap makeProgram insts
+
+        makeProgram :: (MonadRun m) => ([Instruction], ID) -> m ()
+        makeProgram (is', n) = runReaderT (program printSteps is' >> printing printSteps) n
 
 sampleProgram :: [Instruction]
 sampleProgram = [

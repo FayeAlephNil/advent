@@ -1,0 +1,7 @@
+snd p
+rcv a
+set b a
+add b -1
+add a -6
+jgz b a
+snd 10"
