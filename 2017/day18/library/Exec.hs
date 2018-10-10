@@ -33,8 +33,8 @@ regProgram = sequence_ . fmap regExec
 channelExec :: (MonadRun m) => ChannelInstruction -> ReaderT ID m ()
 channelExec (SND val) = do
     i <- ask
-    if i == 1 then send 2 val else
-        if i == 2 then send 1 val
+    if i == 0 then send 1 val else
+        if i == 1 then send 0 val
             else send i val
 channelExec (RCV val) = callRcv val
 
@@ -92,7 +92,7 @@ program' printSteps is = runReaderT (program printSteps is) 0
 programAll :: (MonadRun m) => ([m ()] -> a) -> Int -> Bool -> [Instruction] -> a
 programAll runIt maxThreads printSteps is = runIt (programs instructions)
     where
-        instructions = zip (replicate maxThreads is) [1..]
+        instructions = zip (replicate (maxThreads + 1) is) [0..]
 
         programs :: (MonadRun m) => [([Instruction], ID)] -> [m ()]
         programs insts = fmap makeProgram insts
@@ -106,8 +106,7 @@ parseExecute printSteps t = case parseFull t of
     (Right is) -> Right $ program' printSteps is
 
 clearOutputs :: Int -> IO ()
-clearOutputs n = sequence_ $ fmap (\(i,j) -> writeFile (outputFile i j) "") [(i, j) | i <- [1..n], j <- [1..n]]
-
+clearOutputs n = sequence_ $ fmap (\(i,j) -> writeFile (outputFile i j) "") [(i, j) | i <- [0..n], j <- [0..n]]
 
 execute :: Bool -> Text -> IO ()
 execute printSteps text = do
@@ -117,14 +116,14 @@ execute printSteps text = do
 
 executeSide :: Bool -> Text -> IO ()
 executeSide printSteps text = do
-    clearOutputs 2
+    clearOutputs 1
     case parseFull text of
         (Left l) -> putStrLn l
-        (Right rs) -> programAll threadIt 2 printSteps rs >> pure ()
+        (Right rs) -> programAll threadIt 1 printSteps rs >> pure ()
     where
         threadIt :: [ReaderT Sides IO ()] -> IO ()
         threadIt rs = do
-            sides <- initSides 2
+            sides <- initSides 1
             _ <- mapConcurrently (flip runReaderT sides) rs
             pure ()
 
