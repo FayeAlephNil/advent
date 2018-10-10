@@ -15,7 +15,7 @@ import Lang
 import Registry
 
 parseFull :: Text -> Either String [Instruction]
-parseFull t = case (filter condition $ zip theParse [(1 :: Int)..]) of
+parseFull t = case (filter condition $ zip theParse [(0 ::Int)..]) of
     [] -> Right (rights theParse)
     ((Left s, i) : _) -> Left ("Parsing error at line " ++ show i ++ ": " ++ s)
     _ -> error "Should never reach here"
