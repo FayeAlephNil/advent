@@ -74,6 +74,10 @@ instance MonadRun (ReaderT Sides IO) where
         sides <- lift ask
         _ <- lift . lift . sequence . fmap (\(side, i) -> printSide i j side) $ zip sides [1..]
         pure ()
+    
+    printInstruction inst = do
+        i <- ask
+        lift . lift . appendFile (outputFile i i) $ "\nJust executed: " ++ show inst
 
 outputFile :: Int -> Int -> String
 outputFile i j = "output/" ++ show i ++ "-" ++ show j

@@ -2,6 +2,7 @@ module Run where
 
 import Registry
 import Control.Monad.Reader
+import Lang (Instruction)
 
 type ID = Int 
 
@@ -19,6 +20,7 @@ class (Monad m) => MonadRcv m where
 
 class (MonadSend m, MonadRcv m, MonadReg m) => MonadRun m where
     printState :: ReaderT ID m ()
+    printInstruction :: Instruction -> ReaderT ID m ()
 
 getValue :: (MonadReg m) => Value -> ReaderT ID m Int
 getValue (Left i) = pure i

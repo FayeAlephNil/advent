@@ -76,4 +76,6 @@ instance MonadRun (ReaderT CPU IO) where
         rcv <- lift . lift . readIORef $ rcvRef
 
         lift . lift . putStrLn $ "CPU State: " ++ show (sound, reg, rcv)
+    printInstruction inst = do
+        lift . lift . putStrLn $  "Just executed: " ++ show inst
     

@@ -12,13 +12,7 @@ import Data.Either (rights)
 import Control.Applicative
 
 import Lang
-import Run
 import Registry
-
-parseExecute :: (MonadRun m) => Bool -> Text -> Either String (m ())
-parseExecute printSteps t = case parseFull t of
-    (Left s) -> Left s
-    (Right is) -> Right $ program' printSteps is
 
 parseFull :: Text -> Either String [Instruction]
 parseFull t = case (filter condition $ zip theParse [(1 :: Int)..]) of
