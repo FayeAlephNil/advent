@@ -19,6 +19,9 @@ extra-source-files:
 - stack.yaml
 
 ghc-options: -Wall
+default-extensions: 
+  - OverloadedStrings
+  - FlexibleContexts
 
 library:
   dependencies:
@@ -26,6 +29,7 @@ library:
   - vector
   - text
   - attoparsec
+  - mtl
   source-dirs: library
 
 executables:
@@ -35,6 +39,8 @@ executables:
     dependencies:
     - base
     - day16
+    - attoparsec
+    - text
     ghc-options:
     - -rtsopts
     - -threaded
