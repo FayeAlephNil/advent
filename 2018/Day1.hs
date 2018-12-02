@@ -1,7 +1,5 @@
 module Main where
 
-import System.IO
-
 getSign :: Char -> Int
 getSign '+' = 1
 getSign '-' = -1
@@ -13,25 +11,24 @@ parse (c : r) = getSign c * read r
 parseLines :: String -> [Int]
 parseLines = fmap parse . lines
 
-parseCycle :: String -> [Int]
-parseCycle = fmap parse . cycle . lines
+getScan :: String -> [Int]
+getScan = scanl1 (+) . parseLines
+
+modFreq :: String -> Int -> [Int]
+modFreq s n = (+ (n * get1 s)) <$> getScan s
 
 get1 :: String -> Int
 get1 = sum . parseLines
 
-firstRepeat :: (Eq a) => [a] -> Maybe a
-firstRepeat as = go (as, [])
-    where
-        go :: (Eq a) => ([a], [a]) -> Maybe a
-        go ([], _) = Nothing
-        go (b : bs, seen) = if b `elem` seen then Just b else go (bs, b : seen)
-
 get2 :: String -> Maybe Int
-get2 = firstRepeat . scanl (+) 0 . parseCycle
+get2 s = case filter (`elem` getScan s) $ concatMap (modFreq s) [1..] of
+    [] -> Nothing
+    (a : _) -> Just a
 
 part :: (Show a) => (String -> a) -> IO ()
 part f = fmap f (readFile "day1.in") >>= print
 
+main :: IO ()
 main = part get2
 
 
